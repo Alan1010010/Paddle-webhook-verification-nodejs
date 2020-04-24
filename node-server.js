@@ -4,30 +4,23 @@ const express = require( 'express' );
 const bodyParser = require("body-parser");
 const app = express();
 
+// Parses urlencoded webhooks from paddle to JSON with keys sorted alphabetically ascending and values as strings
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Webhook request handling
 app.post("/", (req, res) => {
-  console.log(req.body);
-  validateWebhook(req.body);
-  res.status(200).end(); // Responding is important
+  if (validateWebhook(req.body)) {
+    console.log('WEBHOOK_VERIFIED');
+    res.status(200).end();
+  } else {
+    res.sendStatus(403);
+    console.log('WEBHOOK_NOT_VERIFIED')
+  }
 })
 
 app.listen( 8080, () => console.log( 'Node.js server started on port 8080.' ) );
 
-
-// const generator = () => {
-//   var result           = '';
-//   var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-//   var charactersLength = 12;
-//   for ( var i = 0; i < charactersLength; i++ ) {
-//      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-//   }
-//   return result;
-// }
-
-
-
-// Node.js & Express implementation
+// Public key from your paddle dashboard
 const pubKey = `-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA0KnQongaimSiCjLTUBPH
 ag9/CON8s2Ex/Hp+qu5f+peDoQQ3+Vk4ssG47AK7Svw7FvKWsAGHhnUlE21RV3pI
@@ -43,42 +36,19 @@ Hu3rtcvsEjLz+VFXrZVThBTzMJNHLCI+bZgIWwb5PyKtYp5V4BDbiMX8zrTKbu0F
 aJWSqSaxevTTXmZbhqYZGt8CAwEAAQ==
 -----END PUBLIC KEY-----`
 
-function ksort(obj){
-    const keys = Object.keys(obj).sort();
-    let sortedObj = {};
-    for (let i in keys) {
-      sortedObj[keys[i]] = obj[keys[i]];
-    }
-
-    return sortedObj;
-  }
-
 function validateWebhook(jsonObj) {
+    // Grab p_signature
     const mySig = Buffer.from(jsonObj.p_signature, 'base64');
+    // Remove p_signature from object - not included in array of fields used in verification.
     delete jsonObj.p_signature;
-    // Need to serialize array and assign to data object
-    jsonObj = ksort(jsonObj);
-    for (let property in jsonObj) {
-        if (jsonObj.hasOwnProperty(property) && (typeof jsonObj[property]) !== "string") {
-            if (Array.isArray(jsonObj[property])) { // is it an array
-                jsonObj[property] = jsonObj[property].toString();
-            } else { //if its not an array and not a string, then it is a JSON obj
-                jsonObj[property] = JSON.stringify(jsonObj[property]);
-            }
-        }
-    }
+    // Serialise remaining fields of jsonObj
     const serialized = Serialize.serialize(jsonObj);
-    // End serialize data object
+    // verify the serialized array against the signature using SHA1 with your public key.
     const verifier = crypto.createVerify('sha1');
     verifier.update(serialized);
     verifier.end();
 
     const verification = verifier.verify(pubKey, mySig);
-
-    if (verification) {
-        return 'Yay! Signature is valid!';
-    } else {
-        return 'The signature is invalid!';
-    }
+    // Used in response if statement
+    return verification;
 }
-
